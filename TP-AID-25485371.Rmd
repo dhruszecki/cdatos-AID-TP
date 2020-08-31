@@ -1,0 +1,173 @@
+---
+title: "TP-AID-25485371"
+author: "Darío Hruszecki"
+date: "8/29/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Librerias
+```{r}
+library(readxl)
+library(here)
+library(dplyr)
+library(ggplot2)
+library(gridExtra) 
+library(mvnormtest)
+library(biotools)
+library(corpcor)
+library(Hotelling)
+library(DescTools)
+library(MASS)
+library(reshape2) 
+library(knitr) 
+library(corrplot)
+library(htmltools)
+library(ggrepel)
+#library(devtools)
+library(ggbiplot)
+library(nortest)
+library(MASS)
+#library(klaR)
+library(caret)
+library(e1071)
+library(cluster)
+library(pracma)
+library(ROCR)
+library(cluster)
+library(factoextra)
+library(NbClust)
+```
+
+#Carga de bases
+```{r}
+here::here()
+df_accidentes <- read_excel(here::here("ds", "bases.xlsx"), sheet = "accidente")
+df_accidentes = df_accidentes[,c(1:5)]
+df_accidentes[,"grave"]=as.factor(df_accidentes$grave)
+
+df_telecom <- read_excel(here::here("ds","bases.xlsx"), sheet = "telecomunicaciones")
+df_telecom <- df_telecom[, c(1:36)]
+
+df_accidentes
+df_telecom
+```
+
+# Subselección del dataset de acuerdo a mi DNI
+```{r}
+dni = 25485371
+
+n_accidentes = round(0.9* nrow(df_accidentes)) #80% de los datos para base accidentes
+n_telecom = round(0.9* nrow(df_telecom)) #90% de los datos para base telecomunicaciones
+
+set.seed(dni);cuales = sample(1:nrow(df_accidentes), size=n_accidentes, replace=FALSE)
+df_accidentes = df_accidentes[cuales,]
+
+set.seed(dni);cuales = sample(1:nrow(df_telecom), size=n_telecom, replace=FALSE)
+df_telecom = df_telecom[cuales,]
+
+df_accidentes
+df_telecom
+write.csv(df_accidentes, "df_accidentes.csv")
+df_accidentes = read.csv("df_accidentes.csv")
+df_accidentes = df_accidentes[,-1]
+df_accidentes[,"grave"]=as.factor(df_accidentes$grave)
+
+```
+
+# Accidentes
+
+## Resumen del dataset
+```{r}
+str(df_accidentes)
+summary(df_accidentes)
+```
+
+## Gráficos de barra e Histogramas
+```{r}
+names(df_accidentes)
+ggplot(data=df_accidentes, aes(x=antigüedad)) + 
+    geom_bar()
+ggplot(data=df_accidentes, aes(x=edad.conductor)) + 
+    geom_bar()
+ggplot(data=df_accidentes, aes(x=potencia)) + 
+    geom_bar()
+ggplot(data=df_accidentes, aes(x=grave)) + 
+    geom_bar()
+```
+## Partición train y val 70-30 de forma estratificada por variable a predecir.
+```{r}
+set.seed(25485371)
+train <- data.frame(createDataPartition(y = df_accidentes$grave, p = 0.7, list = FALSE, times = 1))
+train_ind = train$Resample1
+sum(as.numeric(df_accidentes[train_ind,]$grave)-1)/nrow(df_accidentes[train_ind,]) # % en entrenamiento
+sum(as.numeric(df_accidentes[-train_ind,]$grave)-1)/nrow(df_accidentes[-train_ind,]) # % en validación
+df_accidentes_train=df_accidentes[train_ind,] 
+df_accidentes_val=df_accidentes[-train_ind,] 
+table(df_accidentes_train$grave)/nrow(df_accidentes_train) # Distribución porcentual en entrenamiento
+table(df_accidentes_val$grave)/nrow(df_accidentes_val) # Distribución porcentual en validación
+table(df_accidentes$grave)/nrow(df_accidentes) # Distribución porcentual en el total
+write.csv(df_accidentes_train, "df_accidentes_train.csv")
+write.csv(df_accidentes_val, "df_accidentes_val.csv")
+
+df_accidentes_train = read.csv("df_accidentes_train.csv")
+df_accidentes_val = read.csv("df_accidentes_val.csv")
+df_accidentes_train = df_accidentes_train[,-1]
+df_accidentes_val = df_accidentes_val[,-1]
+df_accidentes_train[,"grave"]=as.factor(df_accidentes_train$grave)
+df_accidentes_val[,"grave"]=as.factor(df_accidentes_val$grave)
+```
+
+#Diagrama de dispersión
+```{r}
+plot(df_accidentes[,c(2,3,4)])
+```
+#Histogramas y gráficos de barras
+```{r}
+ggplot(data = df_accidentes, aes(x = antigüedad, fill = grave)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_accidentes, aes(x = edad.conductor, fill = grave)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_accidentes, aes(x = potencia, fill = grave)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+```
+
+#Dispersograma de las variables numéricas, mostrando a qué clase pertenecen 
+```{r}
+pairs(x = df_accidentes[, c(2,3,4)], col = c("green3", "red")[df_accidentes$grave], pch = 19)
+```
+#Boxplot para cada una de las variables numéricas por clase
+```{r}
+ggplot(df_accidentes,aes(x=grave,y=antigüedad,fill=grave))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+breaks=c("0","1"),labels=c("no","sí"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+
+ggplot(df_accidentes,aes(x=grave,y=edad.conductor,fill=grave))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+breaks=c("0","1"),labels=c("no","sí"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+
+ggplot(df_accidentes,aes(x=grave,y=potencia,fill=grave))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+breaks=c("0","1"),labels=c("no","sí"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+```
+
+#Analizamos normalidad multivariada para variables numéricas:
+```{r}
+mshapiro.test(t(df_accidentes[,c(7,9)]))
+#No es normal multivariada
+```

@@ -1,0 +1,1060 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+#Carga de paquetes
+```{r} 
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(gridExtra) 
+library(mvnormtest)
+library(biotools)
+library(corpcor)
+library(Hotelling)
+library(DescTools)
+library(MASS)
+library(reshape2) 
+library(knitr) 
+library(corrplot)
+library(htmltools)
+library(ggrepel)
+#library(devtools)
+library(ggbiplot)
+library(nortest)
+library(MASS)
+#library(klaR)
+library(caret)
+library(e1071)
+library(cluster)
+library(pracma)
+library(ROCR)
+library(cluster)
+library(factoextra)
+library(NbClust)
+```
+
+#Carga de bases
+```{r}
+excel_sheets("bases.xlsx")
+df_prostata <- read_excel("bases.xlsx", sheet = "próstata")
+df_prostata = df_prostata[,c(1:9)]
+df_paises <- read_excel("bases.xlsx", sheet = "paises")
+df_paises = df_paises[,c(1:7)]
+df_prostata
+df_paises
+```
+
+#Subselección del dataset de acuerdo a mi DNI
+```{r}
+dni = 37981020
+n_prostata = round(0.8* nrow(df_prostata)) #80% de los datos para base próstata
+n_paises = round(0.9* nrow(df_paises)) #90% de los datos para base países
+set.seed(dni);cuales = sample(1:nrow(df_prostata), size=n_prostata, replace=FALSE)
+df_prostata = df_prostata[cuales,]
+
+set.seed(dni);cuales = sample(1:nrow(df_paises), size=n_paises, replace=FALSE)
+df_paises = df_paises[cuales,]
+
+df_prostata
+df_paises
+#write.csv(df_paises, "df_paises.csv") #Se exporta el CSV a utilizar de paises
+df_paises = read.csv("df_paises.csv")
+df_paises = df_paises[,-1]
+```
+
+#-----Análisis Próstata-----
+#Resumen del dataset
+```{r}
+str(df_prostata)
+summary(df_prostata)
+```
+
+#Gráficos de barra e Histogramas
+```{r}
+names(df_prostata)
+ggplot(data=df_prostata, aes(x=CAPSULE)) + 
+    geom_bar()
+ggplot(data=df_prostata, aes(x=AGE)) + 
+    geom_bar()
+ggplot(data=df_prostata, aes(x=RACE)) + 
+    geom_bar()
+ggplot(data=df_prostata, aes(x=DPROS)) + 
+    geom_bar()
+ggplot(data=df_prostata, aes(x=DCAPS)) + 
+    geom_bar()
+ggplot(data=df_prostata, aes(x=PSA)) + 
+    geom_bar()
+ggplot(data=df_prostata, aes(x=VOL)) + 
+    geom_bar()
+ggplot(data=df_prostata, aes(x=GLEASON)) + 
+    geom_bar()
+```
+
+#Removemos registros con faltantes
+```{r}
+df_prostata[is.na(df_prostata$GLEASON),] #Registros con faltantes
+df_prostata_procesado = df_prostata[!is.na(df_prostata$GLEASON),]
+df_prostata_procesado[,"CAPSULE"]=as.factor(df_prostata_procesado$CAPSULE)
+#write.csv(df_prostata_procesado, "df_prostata_procesado.csv") #Se exporta el CSV
+df_prostata_procesado = read.csv("df_prostata_procesado.csv")
+df_prostata_procesado = df_prostata_procesado[,-1]
+df_prostata_procesado[,"CAPSULE"]=as.factor(df_prostata_procesado$CAPSULE)
+```
+
+#Partición train y val 70-30 de forma estratificada por variable a predecir.
+```{r}
+set.seed(37981020)
+train <- data.frame(createDataPartition(y = df_prostata_procesado$CAPSULE, p = 0.7, list = FALSE, times = 1))
+train_ind = train$Resample1
+sum(as.numeric(df_prostata_procesado[train_ind,]$CAPSULE)-1)/nrow(df_prostata_procesado[train_ind,]) # % en entrenamiento
+sum(as.numeric(df_prostata_procesado[-train_ind,]$CAPSULE)-1)/nrow(df_prostata_procesado[-train_ind,]) # % en validación
+df_prostata_procesado_train=df_prostata_procesado[train_ind,] 
+df_prostata_procesado_val=df_prostata_procesado[-train_ind,] 
+table(df_prostata_procesado_train$CAPSULE)/nrow(df_prostata_procesado_train) # Distribución porcentual en entrenamiento
+table(df_prostata_procesado_val$CAPSULE)/nrow(df_prostata_procesado_val) # Distribución porcentual en validación
+table(df_prostata_procesado$CAPSULE)/nrow(df_prostata_procesado) # Distribución porcentual en el total
+#write.csv(df_prostata_procesado_train, "df_prostata_procesado_train.csv")
+#write.csv(df_prostata_procesado_val, "df_prostata_procesado_val.csv")
+df_prostata_procesado_train = read.csv("df_prostata_procesado_train.csv")
+df_prostata_procesado_val = read.csv("df_prostata_procesado_val.csv")
+df_prostata_procesado_train = df_prostata_procesado_train[,-1]
+df_prostata_procesado_val = df_prostata_procesado_val[,-1]
+df_prostata_procesado_train[,"CAPSULE"]=as.factor(df_prostata_procesado_train$CAPSULE)
+df_prostata_procesado_val[,"CAPSULE"]=as.factor(df_prostata_procesado_val$CAPSULE)
+
+```
+
+#Diagrama de dispersión variables numéricas
+```{r}
+plot(df_prostata_procesado[,c(3,7,8,9)])
+```
+#Histogramas y gráficos de barras
+```{r}
+ggplot(data = df_prostata_procesado, aes(x = AGE, fill = CAPSULE)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_prostata_procesado, aes(x = RACE, fill = CAPSULE)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_prostata_procesado, aes(x = DPROS, fill = CAPSULE)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_prostata_procesado, aes(x = DCAPS, fill = CAPSULE)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_prostata_procesado, aes(x = PSA, fill = CAPSULE)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_prostata_procesado, aes(x = VOL, fill = CAPSULE)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+ggplot(data = df_prostata_procesado, aes(x = GLEASON, fill = CAPSULE)) + 
+  geom_histogram(position = "identity", alpha = 0.5)
+```
+
+#Dispersograma de las variables numéricas, mostrando a qué clase pertenecen 
+```{r}
+pairs(x = df_prostata_procesado[, c(3,7,8,9)], col = c("firebrick", "green3")[df_prostata_procesado$CAPSULE], pch = 19)
+```
+#Boxplot para cada una de las variables numéricas por clase
+```{r}
+ggplot(df_prostata_procesado,aes(x=CAPSULE,y=AGE,fill=CAPSULE))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+breaks=c("0","1"),labels=c("no","sí"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+
+ggplot(df_prostata_procesado,aes(x=CAPSULE,y=PSA,fill=CAPSULE))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+breaks=c("0","1"),labels=c("no","sí"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+
+ggplot(df_prostata_procesado,aes(x=CAPSULE,y=VOL,fill=CAPSULE))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+breaks=c("0","1"),labels=c("no","sí"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+
+ggplot(df_prostata_procesado,aes(x=CAPSULE,y=GLEASON,fill=CAPSULE))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+breaks=c("0","1"),labels=c("no","sí"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+```
+
+#Analizamos normalidad multivariada para variables numéricas:
+```{r}
+mshapiro.test(t(df_prostata_procesado[,c(7,9)]))
+#No es normal multivariada
+```
+
+#Verificamos el supuesto de normalidad multivariada por población/grupo. Vemos que el mismo no se cumple.
+```{r}
+mshapiro.test(t(df_prostata_procesado[df_prostata_procesado$CAPSULE==0,c(7,9)]))
+mshapiro.test(t(df_prostata_procesado[df_prostata_procesado$CAPSULE==1,c(7,9)]))
+#No se cumple normalidad multivariada
+```
+
+#Verificamos el supuesto de homoscedasticidad multivariada, vemos que el mismo no se cumple.
+```{r}
+boxM(data = df_prostata_procesado[, c(7,9)], grouping = df_prostata_procesado$CAPSULE)
+#No se cumple homocedasticidad
+```
+
+#Prueba de igualdad de vectores medios. No se cumplen los supuestos para que el test tenga validez estadística.
+
+```{r}
+fitProd = hotelling.test(.~ CAPSULE, data=df_prostata_procesado[,c(2,3,7,8,9)]) 
+fitProd 
+```
+
+#Gráficos de densidad.
+```{r}
+names(df_prostata_procesado)
+ggplot(data = df_prostata_procesado, aes(x = AGE)) + 
+  geom_density(aes(colour = CAPSULE)) + theme_bw() 
+ggplot(data = df_prostata_procesado, aes(x = PSA)) + 
+  geom_density(aes(colour = CAPSULE)) + theme_bw() 
+ggplot(data = df_prostata_procesado, aes(x = VOL)) + 
+  geom_density(aes(colour = CAPSULE)) + theme_bw() 
+ggplot(data = df_prostata_procesado, aes(x = GLEASON)) + 
+  geom_density(aes(colour = CAPSULE)) + theme_bw() 
+
+```
+
+#Matrices de correlaciones variables numéricas
+```{r}
+round(cor(df_prostata_procesado[,c(3,7,8,9)]),3)
+```
+
+#Correlograma
+```{r}
+a= cor(df_prostata_procesado[,c(3,7,8,9)])
+corrplot(a, method = "number")
+```
+
+#Correlogramas para variables por cada tipo
+```{r}
+a= cor(df_prostata_procesado[df_prostata_procesado$CAPSULE==0,c(3,7,8,9)])
+b= cor(df_prostata_procesado[df_prostata_procesado$CAPSULE==1,c(3,7,8,9)])
+par(mfrow= c(1,2))
+corrplot(a, cl.cex=0.5)
+corrplot(b, cl.cex=0.5)
+```
+
+#Si bien no es válida como matriz de correlación, observamos  alguna asociación entre variables y target
+```{r}
+f=as.data.frame(as.numeric(df_prostata_procesado$CAPSULE))
+names(f)="CAPSULE"
+f2 = cbind(f,df_prostata_procesado[,3:9])
+f2[,1]= f2[,1]-1
+b= cor(f2)
+corrplot(b, method = "number")
+```
+
+#PCA
+```{r}
+a= cor(df_prostata_procesado[,c(3,7,8,9)])
+desc_mat_cor = eigen(a)
+autovalores_cor = desc_mat_cor$values
+round(autovalores_cor,2)
+```
+
+#Variabilidad explicada por cada autovalor
+```{r}
+variabilidad_cor = autovalores_cor/sum(autovalores_cor)
+round(variabilidad_cor,2)
+```
+
+#Componentes principales
+
+```{r echo=TRUE}
+datos.pc = prcomp(df_prostata_procesado[,c(3,7,8,9)],scale = TRUE)
+#datos.pc$sdev #raiz cuadrada de los autovalores
+round(datos.pc$sdev^2,2)
+```
+
+```{r echo=TRUE}
+round(datos.pc$rotation,2) #autovectores (en columna)
+```
+
+```{r echo=TRUE}
+round(datos.pc$center,2) #vector de medias 
+```
+
+```{r echo=TRUE}
+round(datos.pc$scale,2) #vector de desvios
+```
+
+```{r echo=TRUE}
+#loadings
+carga1 = data.frame(cbind(X=1:(length(datos.pc)-1),
+                          primeracarga=data.frame(datos.pc$rotation)[,1]))
+carga2 = data.frame(cbind(X=1:(length(datos.pc)-1),
+                          segundacarga=data.frame(datos.pc$rotation)[,2]))
+round(cbind(carga1,carga2),2)
+```
+
+```{r echo=TRUE}
+ggplot(carga1, aes(X,primeracarga) ,
+       fill=tramo ) + geom_bar ( stat="identity" ,
+       position="dodge" ,
+       fill ="royalblue" ,
+       width =0.5 ) + xlab( 'Tramo' ) + ylab('Primeracarga ' )
+
+```
+
+```{r echo=TRUE}
+ggplot( carga2 , aes ( X , segundacarga ) ,
+        fill =X ) + geom_bar ( stat="identity" , position="dodge" ,
+           fill ="royalblue" ,
+           width =0.5 ) +
+xlab('Tramo') + ylab('Segundacarga')
+
+```
+
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1,alpha=0.5)
+```
+#Biplot con variables numéricas
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=0.1 ,var.scale=1,
+         alpha=0.3,groups=factor(df_prostata_procesado$CAPSULE)) +
+  scale_color_manual(name="Rotura capsular", values=c("black", "red","green"),labels=c("NO", "SI")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+#Análisis discriminante lineal, aún sin validez estadística se aplica para ver cómo clasifica.
+```{r echo=TRUE}
+df_prostata_procesado
+modelo_lda <- lda(formula = as.factor(CAPSULE) ~ 
+                       PSA + GLEASON  , data = df_prostata_procesado_train)
+modelo_lda
+summary(modelo_lda)
+```
+
+#Efectuamos las predicciones y matriz de confusión en el conjunto de entrenamiento.
+```{r echo=TRUE}
+datos_train = df_prostata_procesado_train
+pred_lda_train <- predict(modelo_lda,datos_train)
+table(df_prostata_procesado_train$CAPSULE, pred_lda_train$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en entrenamiento
+```{r}
+trainig_error <- mean(df_prostata_procesado_train$CAPSULE != pred_lda_train$class) * 100 
+trainig_error#0%
+```
+
+#Cambiando el umbral de corte.
+```{r echo=TRUE}
+pred_lda_train_2 = ifelse(pred_lda_train$posterior[,1]>0.,0,1)    
+table(df_prostata_procesado_train$CAPSULE, pred_lda_train_2, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en entrenamiento seleccionando otro umbral
+```{r}
+trainig_error <- mean(df_prostata_procesado_train$CAPSULE != pred_lda_train_2) * 100 
+trainig_error#0%
+```
+#Efectuamos las predicciones y matriz de confusión en el conjunto de validación.
+```{r echo=TRUE}
+datos_val = df_prostata_procesado_val
+pred_lda_val <- predict(modelo_lda,datos_val)
+table(df_prostata_procesado_val$CAPSULE, pred_lda_val$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en validación
+```{r}
+val_error <- mean(df_prostata_procesado_val$CAPSULE != pred_lda_val$class) * 100 
+val_error#0%
+```
+
+#Matriz de confusión LDA validación
+```{r echo=TRUE}
+a = factor( pred_lda_val$class, levels=c("1","0") )
+b = factor( df_prostata_procesado_val$CAPSULE, levels=c("1","0") )
+confusion_lda = confusionMatrix(a, b)
+confusion_lda
+```
+
+#QDA
+```{r echo=TRUE}
+modelo_qda <- qda(as.factor(df_prostata_procesado_train$CAPSULE) ~ 
+                   PSA + 
+    GLEASON , data = datos_train)
+modelo_qda
+summary(modelo_qda)
+```
+
+#Efectuamos las predicciones y matriz de confusión en el conjunto de entrenamiento.
+```{r echo=TRUE}
+pred_qda_train <- predict(modelo_qda,datos_train)
+table(df_prostata_procesado_train$CAPSULE, pred_qda_train$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en entrenamiento
+```{r}
+trainig_error <- mean(df_prostata_procesado_train$CAPSULE != pred_qda_train$class) * 100 
+trainig_error#0%
+```
+
+#Efectuamos las predicciones y matriz de confusión en el conjunto de validación.
+```{r echo=TRUE}
+datos_val = df_prostata_procesado_val[,c(7,9)]
+pred_qda_val <- predict(modelo_qda,datos_val)
+table(df_prostata_procesado_val$CAPSULE, pred_qda_val$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en validación
+```{r}
+val_error <- mean(df_prostata_procesado_val$CAPSULE != pred_qda_val$class) * 100 
+val_error#0%
+```
+
+#Matriz de confusión QDA
+```{r echo=TRUE}
+a = factor( pred_qda_val$class, levels=c("1","0") )
+b = factor( df_prostata_procesado_val$CAPSULE, levels=c("1","0") )
+confusion_qda = confusionMatrix(a,b)
+confusion_qda
+```
+
+#Regla del discriminante cuadrático robusto
+```{r}
+cov.gen=cov.rob(df_prostata_procesado_train[df_prostata_procesado_train$CAPSULE==0,c(7,9)],method="mcd",
+nsamp="best")
+cov.apo=cov.rob(df_prostata_procesado_train[df_prostata_procesado_train$CAPSULE==1,c(7,9)],method="mcd",
+nsamp="best")
+#Realiza las estimaciones robustas
+prom.gen=rep(cov.gen$center,100)
+prom.apo=rep(cov.apo$center,100)
+var.gen=as.matrix(cov.gen$cov)
+var.apo=as.matrix(cov.apo$cov)
+#Guarda las estimaciones
+DR.gen=as.matrix(df_prostata_procesado_train[,c(7,9)]-prom.gen)%*%solve(var.gen)%*%
+t(as.matrix(df_prostata_procesado_train[,c(7,9)]-prom.gen))
+DR.apo=as.matrix(df_prostata_procesado_train[,c(7,9)]-prom.apo)%*%solve(var.apo)%*%
+t(as.matrix(df_prostata_procesado_train[,c(7,9)]-prom.apo))
+#Calcula las distancias de Mahalanobis robustas
+clase=0
+for(i in 1:nrow(df_prostata_procesado_train[,c(7,9)])){
+ifelse(DR.gen[i]<DR.apo[i],clase[i]<-0,clase[i]<-1)}
+#Clasifica con las distancias
+table(df_prostata_procesado_train$CAPSULE,clase)
+#Compara las clasificaciones originales con las robustas
+trainig_error <- mean(df_prostata_procesado_train$CAPSULE != clase) * 100 
+trainig_error#0%
+```
+
+#Predicciones en validación
+```{r}
+clase2=0
+DR.gen=as.matrix(df_prostata_procesado_val[,c(7,9)]-prom.gen)%*%solve(var.gen)%*%
+t(as.matrix(df_prostata_procesado_val[,c(7,9)]-prom.gen))
+DR.apo=as.matrix(df_prostata_procesado_val[,c(7,9)]-prom.apo)%*%solve(var.apo)%*%
+t(as.matrix(df_prostata_procesado_val[,c(7,9)]-prom.apo))
+for(i in 1:nrow(df_prostata_procesado_val[,c(7,9)])){
+ifelse(DR.gen[i]<DR.apo[i],clase2[i]<-0,clase2[i]<-1)}
+#Clasifica con las distancias
+table(df_prostata_procesado_val$CAPSULE,clase2)
+#Compara las clasificaciones originales con las robustas
+trainig_error <- mean(df_prostata_procesado_val$CAPSULE != clase2) * 100 
+trainig_error#0%
+```
+
+```{r}
+a = factor( clase2, levels=c("1","0") )
+b = factor( df_prostata_procesado_val$CAPSULE, levels=c("1","0") )
+confusion_qda_robusto = confusionMatrix(a, b)
+confusion_qda_robusto
+```
+
+#Regresión logistica con todas las numéricas
+```{r echo=TRUE}
+modelo_lg <- glm(as.factor(df_prostata_procesado_train$CAPSULE) ~
+                  AGE + PSA + VOL +
+    GLEASON , data = df_prostata_procesado_train,family=binomial)
+summary(modelo_lg)
+```
+
+#Regresión logistica con aquellas numéricas significativas
+```{r echo=TRUE}
+modelo_lg <- glm(as.factor(df_prostata_procesado_train$CAPSULE) ~ 
+                   
+    PSA + GLEASON , data = df_prostata_procesado_train,family=binomial)
+summary(modelo_lg)
+```
+
+#Predicciones en entrenamiento y matriz de confusión
+```{r echo=TRUE}
+pred_lg_train  <- predict(modelo_lg,type = "response")
+clase_lg_train  = ifelse(pred_lg_train>0.5,1,0)  
+table(df_prostata_procesado_train$CAPSULE, clase_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística entrenamiento
+```{r echo=TRUE}
+a = factor( clase_lg_train, levels=c("1","0") )
+b = factor( df_prostata_procesado_train$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a,b)
+confusion_logit
+```
+#Predicción validación
+```{r echo=TRUE}
+pred_lg_val  <- predict(modelo_lg,df_prostata_procesado_val,type = "response")
+clase_lg_val  = ifelse(pred_lg_val>0.5,1,0)  
+table(df_prostata_procesado_val$CAPSULE, clase_lg_val, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística en validación
+```{r echo=TRUE}
+a = factor( clase_lg_val, levels=c("1","0") )
+b = factor( df_prostata_procesado_val$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Regresión logistica 2. Modelo más simple, considerando sólo GLEASON
+```{r echo=TRUE}
+modelo2_lg <- glm(as.factor(CAPSULE) ~  
+    GLEASON , data = df_prostata_procesado_train,family=binomial)
+summary(modelo2_lg)
+```
+
+#Matriz de confusión en conjunto de entrenamiento
+```{r echo=TRUE}
+pred2_lg_train  <- predict(modelo2_lg,type = "response")
+clase2_lg_train  = ifelse(pred2_lg_train>0.5,1,0)    
+table(df_prostata_procesado_train$CAPSULE, clase2_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística (GLEASON)
+```{r echo=TRUE}
+a = factor( clase2_lg_train, levels=c("1","0") )
+b = factor( df_prostata_procesado_train$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Matriz de confusión en conjunto de validación(GLEASON)
+```{r echo=TRUE}
+pred2_lg_val  <- predict(modelo2_lg,df_prostata_procesado_val,type = "response")
+clase2_lg_val  = ifelse(pred2_lg_val>0.5,1,0)    
+table(df_prostata_procesado_val$CAPSULE, clase2_lg_val, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística
+```{r echo=TRUE}
+a = factor( clase2_lg_val, levels=c("1","0") )
+b = factor( df_prostata_procesado_val$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Regresión logistica 3. Modelo más simple, considerando sólo PSA
+```{r echo=TRUE}
+modelo3_lg <- glm(as.factor(CAPSULE) ~  
+    PSA , data = df_prostata_procesado_train,family=binomial)
+summary(modelo3_lg)
+```
+
+#Matriz de confusión en conjunto de entrenamiento
+```{r echo=TRUE}
+pred3_lg_train  <- predict(modelo3_lg,type = "response")
+clase3_lg_train  = ifelse(pred3_lg_train>0.5,1,0) 
+table(df_prostata_procesado_train$CAPSULE, clase3_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística
+```{r echo=TRUE}
+a = factor( clase3_lg_train, levels=c("1","0") )
+b = factor( df_prostata_procesado_train$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Matriz de confusión en conjunto de validación
+```{r echo=TRUE}
+pred3_lg_val  <- predict(modelo3_lg,df_prostata_procesado_val,type = "response")
+clase3_lg_val  = ifelse(pred3_lg_val>0.5,1,0)    
+table(df_prostata_procesado_val$CAPSULE, clase3_lg_val, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística
+```{r echo=TRUE}
+a = factor( clase3_lg_val, levels=c("1","0") )
+b = factor( df_prostata_procesado_val$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Regresión logística con categóricas
+```{r echo=TRUE}
+df_prostata_procesado_train_factorizado=df_prostata_procesado_train
+df_prostata_procesado_train_factorizado
+df_prostata_procesado_train_factorizado$RACE=factor(df_prostata_procesado_train_factorizado$RACE)
+df_prostata_procesado_train_factorizado$DPROS=factor(df_prostata_procesado_train_factorizado$DPROS)
+df_prostata_procesado_train_factorizado$DCAPS=factor(df_prostata_procesado_train_factorizado$DCAPS)
+df_prostata_procesado_val_factorizado=df_prostata_procesado_val
+df_prostata_procesado_val_factorizado
+df_prostata_procesado_val_factorizado$RACE=factor(df_prostata_procesado_val_factorizado$RACE)
+df_prostata_procesado_val_factorizado$DPROS=factor(df_prostata_procesado_val_factorizado$DPROS)
+df_prostata_procesado_val_factorizado$DCAPS=factor(df_prostata_procesado_val_factorizado$DCAPS)
+
+modelo_lg4 <- glm(as.factor(df_prostata_procesado_train_factorizado$CAPSULE) ~
+                  AGE + RACE + DPROS + DCAPS + PSA + VOL +
+    GLEASON , data = df_prostata_procesado_train_factorizado,family=binomial)
+summary(modelo_lg4)
+```
+
+#Regresión logistica considerando también categórica DPROS
+```{r echo=TRUE}
+modelo_lg4 <- glm(as.factor(df_prostata_procesado_train_factorizado$CAPSULE) ~ DPROS + GLEASON + PSA , data = df_prostata_procesado_train_factorizado,family=binomial)
+summary(modelo_lg4)
+```
+
+```{r echo=TRUE}
+pred4_lg_train  <- predict(modelo_lg4,type = "response")
+clase4_lg_train  = ifelse(pred4_lg_train>0.5,1,0)  #ojo que el modelo genera la clase con 0 y 1 (no con 2 y 3)  
+table(df_prostata_procesado_train_factorizado$CAPSULE, clase4_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística entrenamiento
+```{r echo=TRUE}
+a = factor( clase4_lg_train, levels=c("1","0") )
+b = factor( df_prostata_procesado_train_factorizado$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a,b)
+confusion_logit
+```
+
+#Predicción validación
+```{r echo=TRUE}
+pred4_lg_val  <- predict(modelo_lg4,df_prostata_procesado_val_factorizado, type="response")
+clase4_lg_val  = ifelse(pred4_lg_val>0.5,1,0)  
+table(df_prostata_procesado_val_factorizado$CAPSULE, clase4_lg_val, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística en validación
+```{r echo=TRUE}
+a = factor( clase4_lg_val, levels=c("1","0") )
+b = factor( df_prostata_procesado_val_factorizado$CAPSULE, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#SVM
+```{r echo=TRUE}
+#Modelo support vector machine svm
+modelo_svm=svm(as.factor(CAPSULE)~AGE +  PSA + VOL + 
+    GLEASON,
+               data=df_prostata_procesado_train,method="C-classification",kernel="radial",cost=1,gamma=0.9)
+pred_svm=predict(modelo_svm, df_prostata_procesado_train)
+table(df_prostata_procesado_train$CAPSULE, pred_svm, dnn = c("Clase real", "Clase predicha"))
+error_svm<- mean(df_prostata_procesado_train$CAPSULE!= pred_svm) * 100
+error_svm
+```
+
+#Matriz de confusión SVM
+```{r echo=TRUE}
+a = factor( pred_svm, levels=c("1","0") )
+b = factor( df_prostata_procesado_train$CAPSULE, levels=c("1","0") )
+confusion_svm = confusionMatrix(a, b)
+confusion_svm
+```
+
+#SVM en validación
+```{r echo=TRUE}
+#Modelo support vector machine svm
+pred_svm_val=predict(modelo_svm,df_prostata_procesado_val)
+table(df_prostata_procesado_val$CAPSULE, pred_svm_val, dnn = c("Clase real", "Clase predicha"))
+error_svm<- mean(df_prostata_procesado_val$CAPSULE!= pred_svm_val) * 100
+error_svm
+
+```
+
+#Matriz de confusión SVM en validación
+```{r echo=TRUE}
+a = factor( pred_svm_val, levels=c("1","0") )
+b = factor( df_prostata_procesado_val$CAPSULE, levels=c("1","0") )
+confusion_svm = confusionMatrix(a, b)
+confusion_svm
+```
+
+#Comparación de predicciones de diferentes modelos:
+```{r}
+lda_val=pred_lda_val$posterior[,2]
+qda_val=pred_qda_val$posterior[,2]
+predicciones_varias = cbind(lda_val,
+                            qda_val,
+                            pred_lg_val,
+                            pred2_lg_val,
+                            pred3_lg_val,
+                            pred_svm_val)
+cor(predicciones_varias)
+
+```
+
+#ROC y AUC
+```{r}
+p1 <- prediction(as.data.frame(pred_qda_val$posterior)[,2], df_prostata_procesado_val$CAPSULE) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p2 <- prediction(pred4_lg_val, df_prostata_procesado_val$CAPSULE) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p3 <- prediction(pred_lg_val, df_prostata_procesado_val$CAPSULE) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p4 <- prediction(pred2_lg_val, df_prostata_procesado_val$CAPSULE) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p5 <- prediction(pred3_lg_val, df_prostata_procesado_val$CAPSULE) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+plot(p1, col = "red")
+plot(p2, add = TRUE, col = "blue")
+plot(p3, add = TRUE, col = "darkgreen")
+plot(p4, add = TRUE, col = "gold")
+plot(p5, add = TRUE, col = "black")
+legend(x = "bottomright",legend =  c("QDA","Regresión Logística (PSA + GLEASON + DPROS)","Regresión Logística (PSA + GLEASON)","Regresión Logística (GLEASON)","Regresión Logística (PSA)"),fill = c("red","blue","darkgreen","gold","black"), title = "Modelos")
+title(main = "Curvas ROC")
+
+
+#AUC
+auc= data.frame( c(
+round(as.numeric(performance(prediction(as.data.frame(pred_qda_val$posterior)[,2], df_prostata_procesado_val$CAPSULE), measure = "auc")@y.values),4),
+round(as.numeric(performance(prediction(pred4_lg_val, df_prostata_procesado_val$CAPSULE), measure = "auc")@y.values),4),
+round(as.numeric(performance(prediction(pred_lg_val, df_prostata_procesado_val$CAPSULE), measure = "auc")@y.values),4),
+round(as.numeric(performance(prediction(pred2_lg_val, df_prostata_procesado_val$CAPSULE), measure = "auc")@y.values),4),
+round(as.numeric(performance(prediction(pred3_lg_val, df_prostata_procesado_val$CAPSULE), measure = "auc")@y.values),4)))
+rotulo = data.frame(c("QDA","Regresión Logística (PSA + GLEASON + DPROS)","Regresión Logística (PSA + GLEASON)","Regresión Logística (GLEASON)","Regresión Logística (PSA)"))
+tabla= cbind(rotulo,auc)
+names(tabla)=c("Modelo","AUC")
+tabla
+
+```
+
+#-----------------PAISES---------
+# Quitamos registro con faltante y genermaos un dataframe solo con los valores numéricos
+```{r}
+df_paises_procesado = df_paises[!is.na(df_paises$pnb),]
+df_paises_values=df_paises_procesado[,2:7]
+df_paises_procesado
+```
+
+#Análisis exploratorio
+#Histogramas
+```{r echo=TRUE}
+par(mfcol = c(1,length(df_paises_values)))
+    for (k in 1:length(df_paises_values)){
+      boxplot(df_paises_values[k],main = names(df_paises_values[k]))
+      grid()
+    }
+```
+
+#Estandarizo datos y grafico boxplots
+```{r echo=TRUE}
+datos_estandarizados = data.frame(scale(df_paises_values))
+boxplot(datos_estandarizados)
+```
+
+#Dispersograma
+```{r echo=TRUE}
+pairs(datos_estandarizados)
+```
+
+#Matriz de correlaciones
+```{r echo=TRUE}
+matriz_de_correlaciones = data.frame(round(cor(df_paises_values),2))
+matriz_de_correlaciones
+```
+
+#Selecciono el par de variables más correlacionadas entre sí que son esperanza de vida de hombre y mujer respectivamente, calculamos el promedio de correlación con las demás variables.
+```{r}
+mean(abs(matriz_de_correlaciones$esphom))
+mean(abs(matriz_de_correlaciones$espmuj))
+```
+
+#A partir del análisis eliminamos la variable que presenta mayor correlación promedio con las demás variables, es decir la esperanza de vida del hombre
+```{r}
+df_paises_procesado = df_paises_procesado[,-5]
+df_paises_values=df_paises_procesado[,c(2:6)]
+df_paises_procesado
+df_paises_values
+```
+
+#Calculamos la matriz de correlaciones y graficamos correlograma
+```{r}
+matriz_de_correlaciones = cor(df_paises_values)
+matriz_de_correlaciones
+corrplot(matriz_de_correlaciones, method = "number")
+```
+
+#Autovalores
+```{r echo=TRUE}
+desc_mat_cor = eigen(matriz_de_correlaciones)
+autovalores_cor = desc_mat_cor$values
+round(autovalores_cor,2)
+```
+
+#Variabilidad explicada por cada autovalor
+```{r echo=TRUE}
+variabilidad_cor = autovalores_cor/sum(autovalores_cor)
+round(variabilidad_cor,2)
+```
+#Notemos que las primeras dos componentes explican un 90% de la variabilidad. 
+
+#PCA
+```{r echo=TRUE}
+datos.pc = prcomp(df_paises_values,scale = TRUE)
+round(datos.pc$sdev^2,2)
+```
+
+#Autovectores (en columna)
+```{r s, echo=TRUE}
+round(datos.pc$rotation,2) 
+```
+#Vector de medias
+```{r echo=TRUE}
+round(datos.pc$center,2) #vector de medias 
+```
+#Vector de desvíos
+```{r echo=TRUE}
+round(datos.pc$scale,2) #vector de desvíos
+```
+#Loadings
+```{r echo=TRUE}
+carga1 = data.frame(cbind(X=1:length(df_paises_values),
+                          primeracarga=data.frame(datos.pc$rotation)[,1]))
+carga2 = data.frame(cbind(X=1:length(df_paises_values),
+                          segundacarga=data.frame(datos.pc$rotation)[,2]))
+round(cbind(carga1,carga2),2)
+```
+#Primera carga
+```{r echo=TRUE}
+ggplot(carga1, aes(X,primeracarga) ,
+       fill=tramo ) + geom_bar ( stat="identity" ,
+       position="dodge" ,
+       fill ="royalblue" ,
+       width =0.5 ) + xlab( 'Tramo' ) + ylab('Primeracarga ' )
+
+```
+#Segunda carga
+```{r echo=TRUE}
+ggplot( carga2 , aes ( X , segundacarga ) ,
+        fill =X ) + geom_bar ( stat="identity" , position="dodge" ,
+           fill ="royalblue" ,
+           width =0.5 ) +
+xlab('Tramo') + ylab('Segundacarga')
+
+```
+
+#Biplot
+```{r echo=TRUE}
+ggbiplot(datos.pc, labels = df_paises_procesado$paisesbaj, labels.size = 2.5, obs.scale=1 ,var.scale=1,alpha=1.0) #cambiando el alfa?
+str(datos.pc)
+```
+
+#Análisis de cluster
+#Definición de funciones
+```{r}
+# se define función de escalamiento diferente de la tipica normal.
+esc01 <- function(x) { (x - min(x)) / (max(x) - min(x))} 
+# se define una funcion para calcular metricas que orientan sobre el número de clusters a elegir para el problema.
+metrica = function(datA_esc,kmax,f) {
+  
+  sil = array()
+  #sil_2 = array()
+  sse = array()
+  
+  datA_dist= dist(datA_esc,method = "euclidean", diag = FALSE, upper = FALSE, p = 2)
+  for ( i in  2:kmax) {
+    if (strcmp(f,"kmeans")==TRUE) {   #centroide: tipico kmeans
+      CL  = kmeans(datA_esc,centers=i,nstart=50,iter.max = kmax)
+      sse[i]  = CL$tot.withinss 
+      CL_sil = silhouette(CL$cluster, datA_dist)
+      sil[i]  = summary(CL_sil)$avg.width
+        }
+    if (strcmp(f,"pam")==TRUE){       #medoide: ojo porque este metodo tarda muchisimo 
+      CL = pam(x=datA_esc, k=i, diss = F, metric = "euclidean")
+      sse[i]  = CL$objective[1] 
+      sil[i]  = CL$silinfo$avg.width
+      }
+  }
+  sse
+  sil
+  return(data.frame(sse,sil))
+}
+```
+
+#Cantidad de clusters
+```{r echo=TRUE}
+kmax = 6
+#2 opciones de escalamiento
+#m1   = metrica(apply(datos,2,esc01),kmax,"kmeans")      #definida en la funcion esc01
+m1   = metrica(scale(df_paises_values),kmax,"kmeans")               #tipica de la normal
+```
+
+#Gráficos de los indicadores de clustering
+```{r echo=TRUE}
+par(mfrow=c(2,1))
+plot(2:kmax, m1$sil[2:kmax],col=1,type="b", pch = 19, frame = FALSE, 
+	 xlab="Number of clusters K",
+	 ylab="sil") 
+
+plot(2:kmax, m1$sse[2:kmax],type="b", pch = 19, frame = FALSE, 
+	 xlab="Number of clusters K",
+	 ylab="sse") 
+
+par(mfrow=c(1,1))
+
+```
+
+#Criterio F cantidad de clusters. De 2 a 3 resulta significativo.   
+```{r}
+n=nrow(df_paises_procesado)
+k=2
+(m1$sse[k]-m1$sse[k+1])/(m1$sse[k+1]/(n-k-1))
+qf(0.05, k+1, n, lower.tail=F)
+```
+
+#elegimos realizar 3 grupos dado que el silouette es alto y se produce la baja más abrupta de la suma de cuadrados dentro del grupo
+#Cluster por K-means
+```{r echo=TRUE}
+#elegimos realizar 3 grupos
+CL  = kmeans(scale(df_paises_values),3,nstart=50,iter.max = 100)
+#CL  = kmeans(apply(datos,2,esc01),3,nstart=50,iter.max = 10)
+df_paises_values$kmeans = CL$cluster
+```
+
+#Visualizamos el cluster en dos variables, tasa de mortalidad y pnb
+```{r echo=TRUE}
+plot(df_paises_values$tasamor,df_paises_values$pnb,col=df_paises_values$kmeans)+
+grid()
+```
+
+#Es posible visualizarlo mejor en un biplot con las primeras dos componentes principales.
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(df_paises_values$kmeans), labels=df_paises_procesado$paisesbaj )+
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+```{r}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=1,groups = as.factor(df_paises_values$kmeans) )+
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+#Nueva visualización
+```{r echo=TRUE}
+#lo hacemos finalmente para 3 grupos y lo visualizamos en un biplot
+CL  = kmeans(scale(df_paises_values),3,nstart=50,iter.max = 10)
+df_paises_values$kmeans = CL$cluster
+
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(df_paises_values$kmeans) )+
+  scale_color_manual(name="Cluster kmeans", values=c("orange", "cyan","grey"),labels=c("grupo 1", "grupo 2","grupo 3")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+#Cluster jerárquico, aglomerativo, considerando distancia euclidea, y distintos métodos de distancia a los clusters.
+```{r echo=TRUE}
+datos2=df_paises_values[,-6]#quito columna "kmeans"
+datos2=scale(datos2)
+
+# Matriz de distancias euclídeas 
+mat_dist <- dist(x = datos2, method = "euclidean") 
+
+# Dendrogramas (según el tipo de segmentación jerárquica aplicada)  
+hc_average  <- hclust(d = mat_dist, method = "average")
+hc_single   <- hclust(d = mat_dist, method = "single")
+hc_ward     <- hclust(d = mat_dist, method = "ward.D2")
+#calculo del coeficiente de correlacion cofenético
+cor(x = mat_dist, cophenetic(hc_average))
+cor(x = mat_dist, cophenetic(hc_single))
+cor(x = mat_dist, cophenetic(hc_ward))
+```
+#El método de average nos da el mejor valor de correlación cofenética, no obstante nos quedaría un grupo con un único país.
+
+#Dendrograma con la técnica average
+```{r echo=TRUE}
+# construccion de un dendrograma usando los resultados de la técnica de average
+plot(hc_average, labels = df_paises_procesado$paisesbaj, cex=0.6)#no se ve bien si hay muchos datos
+rect.hclust(hc_average, k=3, border="red")#con 3 grupos
+grupos<-cutree(hc_average,k=3)#con 3 grupos
+#split(rownames(datos),grupos)#devuelve una lista con las observaciones separadas por grupo
+```
+
+#Dendrograma con la técnica ward
+```{r echo=TRUE}
+# # construccion de un dendrograma usando los resultados de la técnica de Ward
+plot(hc_ward, labels = df_paises_procesado$paisesbaj, cex=0.6)#no se ve bien si hay muchos datos
+rect.hclust(hc_ward, k=3, border="red")#con 3 grupos
+grupos<-cutree(hc_ward,k=3)#con 3 grupos
+grupos[grupos==2]=4
+grupos[grupos==3]=2
+grupos[grupos==4]=3
+# #split(rownames(datos),grupos)#devuelve una lista con las observaciones separadas por grupo
+```
+
+#Visualizamos con 3 grupos el cluster jerárquico
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(grupos))+
+  scale_color_manual(name="Cluster jerárquico Ward", values=c("red", "blue","green"),labels=c("grupo 1", "grupo 2", "grupo 3")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+#Boxplots de cada variable por grupo
+```{r}
+variables=df_paises_values
+names(variables)[6]="cluster"
+#variables$cluster=factor(variables$cluster)
+variables$cluster=factor(grupos)
+
+
+ggplot(variables,aes(x=cluster,y=tasanat,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=tasamor,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=mortinf,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=espmuj,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=pnb,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+```
+
+#Dispersograma de las variables numéricas, mostrando a que cluster pertenecen 
+```{r}
+pairs(x = variables[, c(1,2,3,4,5)], col = c("firebrick", "blue","green3")[variables$cluster], pch = 19)
+```
+
