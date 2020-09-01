@@ -37,10 +37,10 @@ library(NbClust)
 
 #Carga de bases
 ```{r}
-excel_sheets("bases.xlsx")
-df_prostata <- read_excel("bases.xlsx", sheet = "próstata")
+excel_sheets("ds/bases.xlsx")
+df_prostata <- read_excel("ds/bases.xlsx", sheet = "próstata")
 df_prostata = df_prostata[,c(1:9)]
-df_paises <- read_excel("bases.xlsx", sheet = "paises")
+df_paises <- read_excel("ds/bases.xlsx", sheet = "paises")
 df_paises = df_paises[,c(1:7)]
 df_prostata
 df_paises
@@ -59,7 +59,7 @@ df_paises = df_paises[cuales,]
 
 df_prostata
 df_paises
-#write.csv(df_paises, "df_paises.csv") #Se exporta el CSV a utilizar de paises
+write.csv(df_paises, "df_paises.csv") #Se exporta el CSV a utilizar de paises
 df_paises = read.csv("df_paises.csv")
 df_paises = df_paises[,-1]
 ```
@@ -97,7 +97,7 @@ ggplot(data=df_prostata, aes(x=GLEASON)) +
 df_prostata[is.na(df_prostata$GLEASON),] #Registros con faltantes
 df_prostata_procesado = df_prostata[!is.na(df_prostata$GLEASON),]
 df_prostata_procesado[,"CAPSULE"]=as.factor(df_prostata_procesado$CAPSULE)
-#write.csv(df_prostata_procesado, "df_prostata_procesado.csv") #Se exporta el CSV
+write.csv(df_prostata_procesado, "df_prostata_procesado.csv") #Se exporta el CSV
 df_prostata_procesado = read.csv("df_prostata_procesado.csv")
 df_prostata_procesado = df_prostata_procesado[,-1]
 df_prostata_procesado[,"CAPSULE"]=as.factor(df_prostata_procesado$CAPSULE)
@@ -115,8 +115,8 @@ df_prostata_procesado_val=df_prostata_procesado[-train_ind,]
 table(df_prostata_procesado_train$CAPSULE)/nrow(df_prostata_procesado_train) # Distribución porcentual en entrenamiento
 table(df_prostata_procesado_val$CAPSULE)/nrow(df_prostata_procesado_val) # Distribución porcentual en validación
 table(df_prostata_procesado$CAPSULE)/nrow(df_prostata_procesado) # Distribución porcentual en el total
-#write.csv(df_prostata_procesado_train, "df_prostata_procesado_train.csv")
-#write.csv(df_prostata_procesado_val, "df_prostata_procesado_val.csv")
+write.csv(df_prostata_procesado_train, "df_prostata_procesado_train.csv")
+write.csv(df_prostata_procesado_val, "df_prostata_procesado_val.csv")
 df_prostata_procesado_train = read.csv("df_prostata_procesado_train.csv")
 df_prostata_procesado_val = read.csv("df_prostata_procesado_val.csv")
 df_prostata_procesado_train = df_prostata_procesado_train[,-1]

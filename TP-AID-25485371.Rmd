@@ -50,12 +50,8 @@ df_accidentes <- read_excel(here::here("ds", "bases.xlsx"), sheet = "accidente")
 colnames(df_accidentes)[3] <- "edad.conductor"
 df_accidentes = df_accidentes[,c(1:5)]
 df_accidentes[,"grave"]=as.factor(df_accidentes$grave)
-
-df_telecom <- read_excel(here::here("ds","bases.xlsx"), sheet = "telecomunicaciones")
-df_telecom <- df_telecom[, c(1:36)]
-
 df_accidentes
-df_telecom
+
 ```
 
 # Subselección del dataset de acuerdo a mi DNI
@@ -68,12 +64,8 @@ n_telecom = round(0.9* nrow(df_telecom)) #90% de los datos para base telecomunic
 set.seed(dni);cuales = sample(1:nrow(df_accidentes), size=n_accidentes, replace=FALSE)
 df_accidentes = df_accidentes[cuales,]
 
-set.seed(dni);cuales = sample(1:nrow(df_telecom), size=n_telecom, replace=FALSE)
-df_telecom = df_telecom[cuales,]
-
 df_accidentes[,"grave"]=as.factor(df_accidentes$grave)
 
-df_accidentes
 df_telecom
 
 ```
@@ -647,4 +639,327 @@ tabla= cbind(rotulo,auc)
 names(tabla)=c("Modelo","AUC")
 tabla
 
+```
+
+# Clasificación  NO supervisada
+
+```{r}
+df_telecom <- read_excel(here::here("ds","bases.xlsx"), sheet = "telecomunicaciones")
+df_telecom <- df_telecom[, c(1,3,7,29,34)]
+df_telecom_procesado = df_telecom
+df_telecom_values=df_telecom_procesado
+df_telecom_procesado
+```
+
+
+#Análisis exploratorio
+#Histogramas
+```{r echo=TRUE}
+par(mfcol = c(1,length(df_telecom_values)))
+    for (k in 1:length(df_telecom_values)){
+      boxplot(df_telecom_values[k],main = names(df_telecom_values[k]))
+      grid()
+    }
+```
+
+#Estandarizo datos y grafico boxplots
+```{r echo=TRUE}
+datos_estandarizados = data.frame(scale(df_telecom_values))
+boxplot(datos_estandarizados)
+```
+
+#Dispersograma
+```{r echo=TRUE}
+pairs(datos_estandarizados)
+```
+
+#Matriz de correlaciones
+```{r echo=TRUE}
+matriz_de_correlaciones = data.frame(round(cor(df_telecom_values),2))
+matriz_de_correlaciones
+```
+
+#Selecciono el par de variables más correlacionadas entre sí (internet / facturacion_electronica), calculamos el promedio de correlación con las demás variables.
+```{r}
+mean(abs(matriz_de_correlaciones$internet))
+mean(abs(matriz_de_correlaciones$facturación_electrónica))
+```
+
+#A partir del análisis eliminamos la variable que presenta mayor correlación promedio con las demás variables (internet)
+```{r}
+#df_telecom_procesado = df_telecom_procesado[,-4]
+#df_telecom_values=df_telecom_procesado[,c(1:4)]
+df_telecom_procesado
+df_telecom_values
+```
+
+
+#Calculamos la matriz de correlaciones y graficamos correlograma
+```{r}
+matriz_de_correlaciones = cor(df_telecom_values)
+matriz_de_correlaciones
+corrplot(matriz_de_correlaciones, method = "number")
+```
+
+#Autovalores
+```{r echo=TRUE}
+desc_mat_cor = eigen(matriz_de_correlaciones)
+autovalores_cor = desc_mat_cor$values
+round(autovalores_cor,2)
+```
+
+#Variabilidad explicada por cada autovalor
+```{r echo=TRUE}
+variabilidad_cor = autovalores_cor/sum(autovalores_cor)
+round(variabilidad_cor,2)
+```
+# Las primeras dos componentes explican mas de un 60% de la variabilidad. 
+
+#PCA
+```{r echo=TRUE}
+datos.pc = prcomp(df_telecom_values,scale = TRUE)
+round(datos.pc$sdev^2,2)
+```
+
+#Autovectores (en columna)
+```{r s, echo=TRUE}
+round(datos.pc$rotation,2) 
+```
+#Vector de medias
+```{r echo=TRUE}
+round(datos.pc$center,2) #vector de medias 
+```
+#Vector de desvíos
+```{r echo=TRUE}
+round(datos.pc$scale,2) #vector de desvíos
+```
+#Loadings
+```{r echo=TRUE}
+carga1 = data.frame(cbind(X=1:length(df_telecom_values),
+                          primeracarga=data.frame(datos.pc$rotation)[,1]))
+carga2 = data.frame(cbind(X=1:length(df_telecom_values),
+                          segundacarga=data.frame(datos.pc$rotation)[,2]))
+round(cbind(carga1,carga2),2)
+```
+#Primera carga
+```{r echo=TRUE}
+ggplot(carga1, aes(X,primeracarga) ,
+       fill=tramo ) + geom_bar ( stat="identity" ,
+       position="dodge" ,
+       fill ="royalblue" ,
+       width =0.5 ) + xlab( 'Tramo' ) + ylab('Primeracarga ' )
+
+```
+#Segunda carga
+```{r echo=TRUE}
+ggplot( carga2 , aes ( X , segundacarga ) ,
+        fill =X ) + geom_bar ( stat="identity" , position="dodge" ,
+           fill ="royalblue" ,
+           width =0.5 ) +
+xlab('Tramo') + ylab('Segundacarga')
+
+```
+
+#Biplot
+```{r echo=TRUE}
+ggbiplot(datos.pc, labels = df_telecom_procesado$internet, labels.size = 2.5, obs.scale=1 ,var.scale=1,alpha=1.0) #cambiando el alfa?
+str(datos.pc)
+```
+
+#Análisis de cluster
+#Definición de funciones
+```{r}
+# se define función de escalamiento diferente de la tipica normal.
+esc01 <- function(x) { (x - min(x)) / (max(x) - min(x))} 
+# se define una funcion para calcular metricas que orientan sobre el número de clusters a elegir para el problema.
+metrica = function(datA_esc,kmax,f) {
+  
+  sil = array()
+  #sil_2 = array()
+  sse = array()
+  
+  datA_dist= dist(datA_esc,method = "euclidean", diag = FALSE, upper = FALSE, p = 2)
+  for ( i in  2:kmax) {
+    if (strcmp(f,"kmeans")==TRUE) {   #centroide: tipico kmeans
+      CL  = kmeans(datA_esc,centers=i,nstart=50,iter.max = kmax)
+      sse[i]  = CL$tot.withinss 
+      CL_sil = silhouette(CL$cluster, datA_dist)
+      sil[i]  = summary(CL_sil)$avg.width
+        }
+    if (strcmp(f,"pam")==TRUE){       #medoide: ojo porque este metodo tarda muchisimo 
+      CL = pam(x=datA_esc, k=i, diss = F, metric = "euclidean")
+      sse[i]  = CL$objective[1] 
+      sil[i]  = CL$silinfo$avg.width
+      }
+  }
+  sse
+  sil
+  return(data.frame(sse,sil))
+}
+```
+
+#Cantidad de clusters
+```{r echo=TRUE}
+kmax = 6
+#2 opciones de escalamiento
+#m1   = metrica(apply(datos,2,esc01),kmax,"kmeans")      #definida en la funcion esc01
+m1   = metrica(scale(df_telecom_values),kmax,"kmeans")               #tipica de la normal
+```
+
+#Gráficos de los indicadores de clustering
+```{r echo=TRUE}
+par(mfrow=c(2,1))
+plot(2:kmax, m1$sil[2:kmax],col=1,type="b", pch = 19, frame = FALSE, 
+	 xlab="Number of clusters K",
+	 ylab="sil") 
+
+plot(2:kmax, m1$sse[2:kmax],type="b", pch = 19, frame = FALSE, 
+	 xlab="Number of clusters K",
+	 ylab="sse") 
+
+par(mfrow=c(1,1))
+
+```
+
+#Criterio F cantidad de clusters. De 2 a 3 resulta significativo.   
+```{r}
+n=nrow(df_telecom_procesado)
+k=2
+(m1$sse[k]-m1$sse[k+1])/(m1$sse[k+1]/(n-k-1))
+qf(0.05, k+1, n, lower.tail=F)
+```
+
+#elegimos realizar 3 grupos dado que el silouette es alto y se produce la baja más abrupta de la suma de cuadrados dentro del grupo
+#Cluster por K-means
+```{r echo=TRUE}
+#elegimos realizar 3 grupos
+CL  = kmeans(scale(df_telecom_values),3,nstart=50,iter.max = 100)
+#CL  = kmeans(apply(datos,2,esc01),3,nstart=50,iter.max = 10)
+df_telecom_values$kmeans = CL$cluster
+```
+
+#Visualizamos el cluster en dos variables, tasa de mortalidad y pnb
+```{r echo=TRUE}
+plot(df_telecom_values$edad,df_telecom_values$internet,col=df_telecom_values$kmeans)+
+grid()
+```
+
+#Es posible visualizarlo mejor en un biplot con las primeras dos componentes principales.
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(df_telecom_values$kmeans), labels=df_telecom_procesado$paisesbaj )+
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+```{r}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=1,groups = as.factor(df_telecom_values$kmeans) )+
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+#Nueva visualización
+```{r echo=TRUE}
+#lo hacemos finalmente para 3 grupos y lo visualizamos en un biplot
+CL  = kmeans(scale(df_telecom_values),3,nstart=50,iter.max = 10)
+df_telecom_values$kmeans = CL$cluster
+
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(df_telecom_values$kmeans) )+
+  scale_color_manual(name="Cluster kmeans", values=c("orange", "cyan","grey"),labels=c("grupo 1", "grupo 2","grupo 3")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+#Cluster jerárquico, aglomerativo, considerando distancia euclidea, y distintos métodos de distancia a los clusters.
+```{r echo=TRUE}
+datos2=df_telecom_values[,-6]#quito columna "kmeans"
+datos2=scale(datos2)
+
+# Matriz de distancias euclídeas 
+mat_dist <- dist(x = datos2, method = "euclidean") 
+
+# Dendrogramas (según el tipo de segmentación jerárquica aplicada)  
+hc_average  <- hclust(d = mat_dist, method = "average")
+hc_single   <- hclust(d = mat_dist, method = "single")
+hc_ward     <- hclust(d = mat_dist, method = "ward.D2")
+#calculo del coeficiente de correlacion cofenético
+cor(x = mat_dist, cophenetic(hc_average))
+cor(x = mat_dist, cophenetic(hc_single))
+cor(x = mat_dist, cophenetic(hc_ward))
+```
+#El método de average nos da el mejor valor de correlación cofenética, no obstante nos quedaría un grupo con un único país.
+
+#Dendrograma con la técnica average
+```{r echo=TRUE}
+# construccion de un dendrograma usando los resultados de la técnica de average
+plot(hc_average, labels = df_telecom_procesado$edad, cex=0.6)#no se ve bien si hay muchos datos
+rect.hclust(hc_average, k=3, border="red")#con 3 grupos
+grupos<-cutree(hc_average,k=3)#con 3 grupos
+#split(rownames(datos),grupos)#devuelve una lista con las observaciones separadas por grupo
+```
+
+#Dendrograma con la técnica ward
+```{r echo=TRUE}
+# # construccion de un dendrograma usando los resultados de la técnica de Ward
+plot(hc_ward, labels = df_telecom_procesado$edad, cex=0.6)#no se ve bien si hay muchos datos
+rect.hclust(hc_ward, k=3, border="red")#con 3 grupos
+grupos<-cutree(hc_ward,k=3)#con 3 grupos
+grupos[grupos==2]=4
+grupos[grupos==3]=2
+grupos[grupos==4]=3
+# #split(rownames(datos),grupos)#devuelve una lista con las observaciones separadas por grupo
+```
+
+#Visualizamos con 3 grupos el cluster jerárquico
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1, alpha=0.5,groups = as.factor(grupos))+
+  scale_color_manual(name="Cluster jerárquico Ward", values=c("red", "blue","green"),labels=c("grupo 1", "grupo 2", "grupo 3")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+
+#Boxplots de cada variable por grupo
+```{r}
+variables=df_telecom_values
+names(variables)[6]="cluster"
+#variables$cluster=factor(variables$cluster)
+variables$cluster=factor(grupos)
+
+
+ggplot(variables,aes(x=cluster,y=region,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=edad,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=nivel_educativo,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=internet,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+ggplot(variables,aes(x=cluster,y=facturación_electrónica,fill=cluster))+
+geom_boxplot()+
+xlab("")+
+scale_fill_brewer(palette="Pastel1",name="Cluster",
+breaks=c("1","2","3"),labels=c("1","2","3"))+
+theme(axis.text.x=element_blank(),
+axis.ticks.x=element_blank())
+```
+
+#Dispersograma de las variables numéricas, mostrando a que cluster pertenecen 
+```{r}
+pairs(x = variables[, c(1,2,3,4,5)], col = c("firebrick", "blue","green3")[variables$cluster], pch = 19)
 ```
