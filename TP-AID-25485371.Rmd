@@ -110,13 +110,6 @@ df_accidentes_val=df_accidentes[-train_ind,]
 table(df_accidentes_train$grave)/nrow(df_accidentes_train) # Distribución porcentual en entrenamiento
 table(df_accidentes_val$grave)/nrow(df_accidentes_val) # Distribución porcentual en validación
 table(df_accidentes$grave)/nrow(df_accidentes) # Distribución porcentual en el total
-write.csv(df_accidentes_train, "df_accidentes_train.csv")
-write.csv(df_accidentes_val, "df_accidentes_val.csv")
-
-df_accidentes_train = read.csv("df_accidentes_train.csv")
-df_accidentes_val = read.csv("df_accidentes_val.csv")
-df_accidentes_train = df_accidentes_train[,-1]
-df_accidentes_val = df_accidentes_val[,-1]
 df_accidentes_train[,"grave"]=as.factor(df_accidentes_train$grave)
 df_accidentes_val[,"grave"]=as.factor(df_accidentes_val$grave)
 ```
@@ -144,7 +137,7 @@ pairs(x = df_accidentes[, c(2,3,4)], col = c("green3", "red")[df_accidentes$grav
 ggplot(df_accidentes,aes(x=grave,y=antigüedad,fill=grave))+
 geom_boxplot()+
 xlab("")+
-scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+scale_fill_brewer(palette="Pastel1",name="Accidente Grave",
 breaks=c("0","1"),labels=c("no","sí"))+
 theme(axis.text.x=element_blank(),
 axis.ticks.x=element_blank())
@@ -152,7 +145,7 @@ axis.ticks.x=element_blank())
 ggplot(df_accidentes,aes(x=grave,y=edad.conductor,fill=grave))+
 geom_boxplot()+
 xlab("")+
-scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+scale_fill_brewer(palette="Pastel1",name="Accidente Grave",
 breaks=c("0","1"),labels=c("no","sí"))+
 theme(axis.text.x=element_blank(),
 axis.ticks.x=element_blank())
@@ -160,7 +153,7 @@ axis.ticks.x=element_blank())
 ggplot(df_accidentes,aes(x=grave,y=potencia,fill=grave))+
 geom_boxplot()+
 xlab("")+
-scale_fill_brewer(palette="Pastel1",name="Rotura capsular",
+scale_fill_brewer(palette="Pastel1",name="Accidente Grave",
 breaks=c("0","1"),labels=c("no","sí"))+
 theme(axis.text.x=element_blank(),
 axis.ticks.x=element_blank())
@@ -168,6 +161,488 @@ axis.ticks.x=element_blank())
 
 #Analizamos normalidad multivariada para variables numéricas:
 ```{r}
-mshapiro.test(t(df_accidentes[,c(7,9)]))
+mshapiro.test(t(df_accidentes[,c(2,3,4)]))
 #No es normal multivariada
+```
+#Verificamos el supuesto de normalidad multivariada por población/grupo. Vemos que el mismo no se cumple.
+```{r}
+mshapiro.test(t(df_accidentes[df_accidentes$grave==0,c(2,3,4)]))
+mshapiro.test(t(df_accidentes[df_accidentes$grave==1,c(2,3,4)]))
+#No se cumple normalidad multivariada
+```
+
+#Verificamos el supuesto de homoscedasticidad multivariada, vemos que el mismo no se cumple.
+```{r}
+boxM(data = df_accidentes[, c(2,3,4)], grouping = df_accidentes$grave)
+#No se cumple homocedasticidad
+```
+
+#Prueba de igualdad de vectores medios. No se cumplen los supuestos para que el test tenga validez estadística.
+
+```{r}
+fitProd = hotelling.test(.~ grave, data=df_accidentes[,c(2,3,4,5)]) 
+fitProd 
+```
+
+
+#Gráficos de densidad.
+```{r}
+names(df_accidentes)
+ggplot(data = df_accidentes, aes(x = antigüedad)) + 
+  geom_density(aes(colour = grave)) + theme_bw() 
+ggplot(data = df_accidentes, aes(x = edad.conductor)) + 
+  geom_density(aes(colour = grave)) + theme_bw() 
+ggplot(data = df_accidentes, aes(x = potencia)) + 
+  geom_density(aes(colour = grave)) + theme_bw() 
+
+```#
+
+#Matrices de correlaciones variables numéricas
+```{r}
+round(cor(df_accidentes[,c(2,3,4)]),5)
+```
+
+#Correlograma
+```{r}
+a= cor(df_accidentes[,c(2,3,4)])
+corrplot(a, method = "number")
+```
+
+#Correlogramas para variables por cada tipo
+```{r}
+a= cor(df_accidentes[df_accidentes$grave==0,c(2,3,4)])
+b= cor(df_accidentes[df_accidentes$grave==1,c(2,3,4)])
+par(mfrow= c(1,2))
+corrplot(a, cl.cex=0.5)
+corrplot(b, cl.cex=0.5)
+```
+
+#Si bien no es válida como matriz de correlación, observamos  alguna asociación entre variables y target
+```{r}
+f=as.data.frame(as.numeric(df_accidentes$grave))
+names(f)="grave"
+f2 = cbind(f,df_accidentes[,2:4])
+f2[,1]= f2[,1]-1
+b= cor(f2)
+corrplot(b, method = "number")
+```
+
+#PCA
+```{r}
+a= cor(df_accidentes[,c(2,3,4)])
+desc_mat_cor = eigen(a)
+autovalores_cor = desc_mat_cor$values
+round(autovalores_cor,2)
+```
+
+#Variabilidad explicada por cada autovalor
+```{r}
+variabilidad_cor = autovalores_cor/sum(autovalores_cor)
+round(variabilidad_cor,2)
+```
+
+#Componentes principales
+
+```{r echo=TRUE}
+datos.pc = prcomp(df_accidentes[,c(2,3,4)],scale = TRUE)
+#datos.pc$sdev #raiz cuadrada de los autovalores
+round(datos.pc$sdev^2,2)
+```
+
+```{r echo=TRUE}
+round(datos.pc$rotation,2) #autovectores (en columna)
+```
+
+```{r echo=TRUE}
+round(datos.pc$center,2) #vector de medias 
+```
+
+```{r echo=TRUE}
+round(datos.pc$scale,2) #vector de desvios
+```
+
+```{r echo=TRUE}
+#loadings
+carga1 = data.frame(cbind(X=1:(length(datos.pc)-1),
+                          primeracarga=data.frame(datos.pc$rotation)[,1]))
+carga2 = data.frame(cbind(X=1:(length(datos.pc)-1),
+                          segundacarga=data.frame(datos.pc$rotation)[,2]))
+round(cbind(carga1,carga2),2)
+```
+
+```{r echo=TRUE}
+ggplot(carga1, aes(X,primeracarga) ,
+       fill=tramo ) + geom_bar ( stat="identity" ,
+       position="dodge" ,
+       fill ="royalblue" ,
+       width =0.5 ) + xlab( 'Tramo' ) + ylab('Primeracarga ' )
+
+```
+
+```{r echo=TRUE}
+ggplot( carga2 , aes ( X , segundacarga ) ,
+        fill =X ) + geom_bar ( stat="identity" , position="dodge" ,
+           fill ="royalblue" ,
+           width =0.5 ) +
+xlab('Tramo') + ylab('Segundacarga')
+
+```
+
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=1 ,var.scale=1,alpha=0.5)
+```
+#Biplot con variables numéricas
+```{r echo=TRUE}
+ggbiplot(datos.pc, obs.scale=0.1 ,var.scale=1,
+         alpha=0.3,groups=factor(df_accidentes$grave)) +
+  scale_color_manual(name="Accidente Grave", values=c("black", "red","green"),labels=c("NO", "SI")) +  
+theme(legend.direction ="horizontal", legend.position = "top")
+```
+
+#Análisis discriminante lineal, aún sin validez estadística se aplica para ver cómo clasifica.
+```{r echo=TRUE}
+df_accidentes
+modelo_lda <- lda(formula = as.factor(grave) ~ 
+                       antigüedad + edad.conductor + potencia, data = df_accidentes_train)
+modelo_lda
+summary(modelo_lda)
+```
+
+#Efectuamos las predicciones y matriz de confusión en el conjunto de entrenamiento.
+```{r echo=TRUE}
+datos_train = df_accidentes_train
+pred_lda_train <- predict(modelo_lda,datos_train)
+table(df_accidentes_train$grave, pred_lda_train$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en entrenamiento
+```{r}
+trainig_error <- mean(df_accidentes_train$grave != pred_lda_train$class) * 100 
+trainig_error#0%
+```
+
+#Cambiando el umbral de corte.
+```{r echo=TRUE}
+pred_lda_train_2 = ifelse(pred_lda_train$posterior[,1]>0.,0,1)    
+table(df_accidentes_train$grave, pred_lda_train_2, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en entrenamiento seleccionando otro umbral
+```{r}
+trainig_error <- mean(df_accidentes_train$grave != pred_lda_train_2) * 100 
+trainig_error#0%
+```
+#Efectuamos las predicciones y matriz de confusión en el conjunto de validación.
+```{r echo=TRUE}
+datos_val = df_accidentes_val
+pred_lda_val <- predict(modelo_lda,datos_val)
+table(df_accidentes_val$grave, pred_lda_val$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en validación
+```{r}
+val_error <- mean(df_accidentes_val$grave != pred_lda_val$class) * 100 
+val_error#0%
+```
+
+#Matriz de confusión LDA validación
+```{r echo=TRUE}
+a = factor( pred_lda_val$class, levels=c("1","0") )
+b = factor( df_accidentes_val$grave, levels=c("1","0") )
+confusion_lda = confusionMatrix(a, b)
+confusion_lda
+```
+
+#QDA
+```{r echo=TRUE}
+modelo_qda <- qda(as.factor(df_accidentes_train$grave) ~ 
+                   antigüedad + edad.conductor + potencia , data = datos_train)
+modelo_qda
+summary(modelo_qda)
+```
+
+#Efectuamos las predicciones y matriz de confusión en el conjunto de entrenamiento.
+```{r echo=TRUE}
+pred_qda_train <- predict(modelo_qda,datos_train)
+table(df_accidentes_train$grave, pred_qda_train$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en entrenamiento
+```{r}
+trainig_error <- mean(df_accidentes_train$grave != pred_qda_train$class) * 100 
+trainig_error#0%
+```
+
+#Efectuamos las predicciones y matriz de confusión en el conjunto de validación.
+```{r echo=TRUE}
+datos_val = df_accidentes_val[,c(2,3,4)]
+pred_qda_val <- predict(modelo_qda, datos_val)
+table(df_accidentes_val$grave, pred_qda_val$class, dnn = c("Clase real","Clase predicha"))
+```
+
+#Tasa de error en validación
+```{r}
+val_error <- mean(df_accidentes_val$grave != pred_qda_val$class) * 100 
+val_error#0%
+```
+
+#Matriz de confusión QDA
+```{r echo=TRUE}
+a = factor( pred_qda_val$class, levels=c("1","0") )
+b = factor( df_accidentes_val$grave, levels=c("1","0") )
+confusion_qda = confusionMatrix(a,b)
+confusion_qda
+```
+
+#Regla del discriminante cuadrático robusto
+```{r}
+cov.gen=cov.rob(df_accidentes_train[df_accidentes_train$grave==0,c(2,3)],method="mcd",
+nsamp="best")
+cov.apo=cov.rob(df_accidentes_train[df_accidentes_train$grave==1,c(2,3)],method="mcd",
+nsamp="best")
+
+#Realiza las estimaciones robustas
+prom.gen=rep(cov.gen$center,100)
+prom.apo=rep(cov.apo$center,100)
+var.gen=as.matrix(cov.gen$cov)
+var.apo=as.matrix(cov.apo$cov)
+
+#Guarda las estimaciones
+DR.gen=as.matrix(df_accidentes_train[,c(2,3)]-prom.gen)%*%solve(var.gen)%*%
+t(as.matrix(df_accidentes_train[,c(2,3)]-prom.gen))
+DR.apo=as.matrix(df_accidentes_train[,c(2,3)]-prom.apo)%*%solve(var.apo)%*%
+t(as.matrix(df_accidentes_train[,c(2,3)]-prom.apo))
+
+#Calcula las distancias de Mahalanobis robustas
+clase=0
+for(i in 1:nrow(df_accidentes_train[,c(2,3)])){
+ifelse(DR.gen[i]<DR.apo[i],clase[i]<-0,clase[i]<-1)}
+
+#Clasifica con las distancias
+table(df_accidentes_train$grave,clase)
+
+#Compara las clasificaciones originales con las robustas
+trainig_error <- mean(df_accidentes_train$grave != clase) * 100 
+trainig_error#0%
+```
+
+#Predicciones en validación
+```{r}
+clase2=0
+DR.gen=as.matrix(df_accidentes_val[,c(2,3)]-prom.gen)%*%solve(var.gen)%*%
+t(as.matrix(df_accidentes_val[,c(2,3)]-prom.gen))
+DR.apo=as.matrix(df_accidentes_val[,c(2,3)]-prom.apo)%*%solve(var.apo)%*%
+t(as.matrix(df_accidentes_val[,c(2,3)]-prom.apo))
+for(i in 1:nrow(df_accidentes_val[,c(2,3)])){
+ifelse(DR.gen[i]<DR.apo[i],clase2[i]<-0,clase2[i]<-1)}
+#Clasifica con las distancias
+table(df_accidentes_val$grave,clase2)
+#Compara las clasificaciones originales con las robustas
+trainig_error <- mean(df_accidentes_val$grave != clase2) * 100 
+trainig_error#0%
+```
+
+```{r}
+a = factor( clase2, levels=c("1","0") )
+b = factor( df_accidentes_val$grave, levels=c("1","0") )
+confusion_qda_robusto = confusionMatrix(a, b)
+confusion_qda_robusto
+```
+
+#Regresión logistica con aquellas numéricas significativas
+```{r echo=TRUE}
+modelo_lg <- glm(as.factor(df_accidentes_train$grave) ~ 
+                   
+    antigüedad + edad.conductor + potencia , data = df_accidentes_train,family=binomial)
+summary(modelo_lg)
+```
+
+#Predicciones en entrenamiento y matriz de confusión
+```{r echo=TRUE}
+pred_lg_train  <- predict(modelo_lg,type = "response")
+clase_lg_train  = ifelse(pred_lg_train>0.5,1,0)  
+table(df_accidentes_train$grave, clase_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística entrenamiento
+```{r echo=TRUE}
+a = factor( clase_lg_train, levels=c("1","0") )
+b = factor( df_accidentes_train$grave, levels=c("1","0") )
+confusion_logit = confusionMatrix(a,b)
+confusion_logit
+```
+#Predicción validación
+```{r echo=TRUE}
+pred_lg_val  <- predict(modelo_lg,df_accidentes_val,type = "response")
+clase_lg_val  = ifelse(pred_lg_val>0.5,1,0)  
+table(df_accidentes_val$grave, clase_lg_val, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística en validación
+```{r echo=TRUE}
+a = factor( clase_lg_val, levels=c("1","0") )
+b = factor( df_accidentes_val$grave, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Regresión logistica 2. Modelo más simple, considerando sólo antigüedad
+```{r echo=TRUE}
+modelo2_lg <- glm(as.factor(grave) ~  
+    antigüedad, data = df_accidentes_train,family=binomial)
+summary(modelo2_lg)
+```
+
+#Matriz de confusión en conjunto de entrenamiento
+```{r echo=TRUE}
+pred2_lg_train  <- predict(modelo2_lg,type = "response")
+clase2_lg_train  = ifelse(pred2_lg_train>0.5,1,0)    
+table(df_accidentes_train$grave, clase2_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística (antigüedad)
+```{r echo=TRUE}
+a = factor( clase2_lg_train, levels=c("1","0") )
+b = factor( df_accidentes_train$grave, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Matriz de confusión en conjunto de validación(antigüedad)
+```{r echo=TRUE}
+pred2_lg_val  <- predict(modelo2_lg,df_accidentes_val,type = "response")
+clase2_lg_val  = ifelse(pred2_lg_val>0.5,1,0)    
+table(df_accidentes_val$grave, clase2_lg_val, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística
+```{r echo=TRUE}
+a = factor( clase2_lg_val, levels=c("1","0") )
+b = factor( df_accidentes_val$grave, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Regresión logistica 3. Modelo más simple, considerando sólo edad.conductor
+```{r echo=TRUE}
+modelo3_lg <- glm(as.factor(grave) ~  edad.conductor , data = df_accidentes_train,family=binomial)
+summary(modelo3_lg)
+```
+
+#Matriz de confusión en conjunto de entrenamiento
+```{r echo=TRUE}
+pred3_lg_train  <- predict(modelo3_lg,type = "response")
+clase3_lg_train  = ifelse(pred3_lg_train>0.5,1,0) 
+table(df_accidentes_train$grave, clase3_lg_train, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística
+```{r echo=TRUE}
+a = factor( clase3_lg_train, levels=c("1","0") )
+b = factor( df_accidentes_train$grave, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+
+#Matriz de confusión en conjunto de validación
+```{r echo=TRUE}
+pred3_lg_val  <- predict(modelo3_lg,df_accidentes_val,type = "response")
+clase3_lg_val  = ifelse(pred3_lg_val>0.5,1,0)    
+table(df_accidentes_val$grave, clase3_lg_val, dnn = c("Clase real","Clase predicha"))
+```
+
+#Matriz de confusión Regresión logística
+```{r echo=TRUE}
+a = factor( clase3_lg_val, levels=c("1","0") )
+b = factor( df_accidentes_val$grave, levels=c("1","0") )
+confusion_logit = confusionMatrix(a, b)
+confusion_logit
+```
+#SVM
+```{r echo=TRUE}
+#Modelo support vector machine svm
+modelo_svm=svm(as.factor(grave)~antigüedad + edad.conductor + potencia, 
+               data=df_accidentes_train,method="C-classification",kernel="radial",cost=1,gamma=0.9)
+pred_svm=predict(modelo_svm, df_accidentes_train)
+table(df_accidentes_train$grave, pred_svm, dnn = c("Clase real", "Clase predicha"))
+error_svm<- mean(df_accidentes_train$grave!= pred_svm) * 100
+error_svm
+```
+
+#Matriz de confusión SVM
+```{r echo=TRUE}
+a = factor( pred_svm, levels=c("1","0") )
+b = factor( df_accidentes_train$grave, levels=c("1","0") )
+confusion_svm = confusionMatrix(a, b)
+confusion_svm
+```
+
+#SVM en validación
+```{r echo=TRUE}
+#Modelo support vector machine svm
+pred_svm_val=predict(modelo_svm,df_accidentes_val)
+table(df_accidentes_val$grave, pred_svm_val, dnn = c("Clase real", "Clase predicha"))
+error_svm<- mean(df_accidentes_val$grave!= pred_svm_val) * 100
+error_svm
+
+```
+
+#Matriz de confusión SVM en validación
+```{r echo=TRUE}
+a = factor( pred_svm_val, levels=c("1","0") )
+b = factor( df_accidentes_val$grave, levels=c("1","0") )
+confusion_svm = confusionMatrix(a, b)
+confusion_svm
+```
+
+#Comparación de predicciones de diferentes modelos:
+```{r}
+lda_val=pred_lda_val$posterior[,2]
+qda_val=pred_qda_val$posterior[,2]
+predicciones_varias = cbind(lda_val,
+                            qda_val,
+                            pred_lg_val,
+                            pred2_lg_val,
+                            pred3_lg_val,
+                            pred_svm_val)
+cor(predicciones_varias)
+
+```
+
+#ROC y AUC
+```{r}
+
+df_accidentes_val$grave
+
+p1 <- prediction(as.data.frame(pred_qda_val$posterior)[,2], df_accidentes_val$grave) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p2 <- prediction(pred_lg_val, df_accidentes_val$grave) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p3 <- prediction(pred2_lg_val, df_accidentes_val$grave) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p4 <- prediction(pred3_lg_val, df_accidentes_val$grave) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+plot(p1, col = "red")
+plot(p2, add = TRUE, col = "blue")
+plot(p3, add = TRUE, col = "darkgreen")
+plot(p4, add = TRUE, col = "gold")
+legend(x = "bottomright",legend =  c("QDA","Regresión Logística (antigüedad + edad.conductor)","Regresión Logística (antigüedad)","Regresión Logística (edad.conductor)"),fill = c("red","blue","darkgreen","gold","black"), title = "Modelos")
+title(main = "Curvas ROC")
+
+
+#AUC
+auc= data.frame( c(
+round(as.numeric(performance(prediction(as.data.frame(pred_qda_val$posterior)[,2], df_accidentes_val$grave), measure = "auc")@y.values),4),
+round(as.numeric(performance(prediction(pred_lg_val, df_accidentes_val$grave), measure = "auc")@y.values),4),
+round(as.numeric(performance(prediction(pred2_lg_val, df_accidentes_val$grave), measure = "auc")@y.values),4),
+round(as.numeric(performance(prediction(pred3_lg_val, df_accidentes_val$grave), measure = "auc")@y.values),4)))
+rotulo = data.frame(c("QDA","Regresión Logística (antigüedad + edad.conductor)","Regresión Logística (antigüedad)","Regresión Logística (edad.conductor)"))
+tabla= cbind(rotulo,auc)
+names(tabla)=c("Modelo","AUC")
+tabla
+
 ```
