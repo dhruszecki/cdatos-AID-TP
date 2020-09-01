@@ -40,12 +40,14 @@ library(ROCR)
 library(cluster)
 library(factoextra)
 library(NbClust)
+library(car)
 ```
 
 #Carga de bases
 ```{r}
 here::here()
 df_accidentes <- read_excel(here::here("ds", "bases.xlsx"), sheet = "accidente")
+colnames(df_accidentes)[3] <- "edad.conductor"
 df_accidentes = df_accidentes[,c(1:5)]
 df_accidentes[,"grave"]=as.factor(df_accidentes$grave)
 
@@ -69,12 +71,10 @@ df_accidentes = df_accidentes[cuales,]
 set.seed(dni);cuales = sample(1:nrow(df_telecom), size=n_telecom, replace=FALSE)
 df_telecom = df_telecom[cuales,]
 
+df_accidentes[,"grave"]=as.factor(df_accidentes$grave)
+
 df_accidentes
 df_telecom
-write.csv(df_accidentes, "df_accidentes.csv")
-df_accidentes = read.csv("df_accidentes.csv")
-df_accidentes = df_accidentes[,-1]
-df_accidentes[,"grave"]=as.factor(df_accidentes$grave)
 
 ```
 
@@ -105,12 +105,16 @@ train <- data.frame(createDataPartition(y = df_accidentes$grave, p = 0.7, list =
 train_ind = train$Resample1
 sum(as.numeric(df_accidentes[train_ind,]$grave)-1)/nrow(df_accidentes[train_ind,]) # % en entrenamiento
 sum(as.numeric(df_accidentes[-train_ind,]$grave)-1)/nrow(df_accidentes[-train_ind,]) # % en validación
+
 df_accidentes_train=df_accidentes[train_ind,] 
 df_accidentes_val=df_accidentes[-train_ind,] 
+
 table(df_accidentes_train$grave)/nrow(df_accidentes_train) # Distribución porcentual en entrenamiento
 table(df_accidentes_val$grave)/nrow(df_accidentes_val) # Distribución porcentual en validación
 table(df_accidentes$grave)/nrow(df_accidentes) # Distribución porcentual en el total
+
 df_accidentes_train[,"grave"]=as.factor(df_accidentes_train$grave)
+
 df_accidentes_val[,"grave"]=as.factor(df_accidentes_val$grave)
 ```
 
@@ -167,6 +171,7 @@ mshapiro.test(t(df_accidentes[,c(2,3,4)]))
 #Verificamos el supuesto de normalidad multivariada por población/grupo. Vemos que el mismo no se cumple.
 ```{r}
 mshapiro.test(t(df_accidentes[df_accidentes$grave==0,c(2,3,4)]))
+
 mshapiro.test(t(df_accidentes[df_accidentes$grave==1,c(2,3,4)]))
 #No se cumple normalidad multivariada
 ```
@@ -195,10 +200,7 @@ ggplot(data = df_accidentes, aes(x = edad.conductor)) +
 ggplot(data = df_accidentes, aes(x = potencia)) + 
   geom_density(aes(colour = grave)) + theme_bw() 
 
-```#
-
 #Matrices de correlaciones variables numéricas
-```{r}
 round(cor(df_accidentes[,c(2,3,4)]),5)
 ```
 
@@ -217,7 +219,7 @@ corrplot(a, cl.cex=0.5)
 corrplot(b, cl.cex=0.5)
 ```
 
-#Si bien no es válida como matriz de correlación, observamos  alguna asociación entre variables y target
+#Si bien no es válida como matriz de correlación, nos permite observar  que no hay asociación entre variables y target
 ```{r}
 f=as.data.frame(as.numeric(df_accidentes$grave))
 names(f)="grave"
@@ -227,7 +229,7 @@ b= cor(f2)
 corrplot(b, method = "number")
 ```
 
-#PCA
+# Análisis de componentes principales
 ```{r}
 a= cor(df_accidentes[,c(2,3,4)])
 desc_mat_cor = eigen(a)
@@ -235,13 +237,13 @@ autovalores_cor = desc_mat_cor$values
 round(autovalores_cor,2)
 ```
 
-#Variabilidad explicada por cada autovalor
+## Variabilidad explicada por cada autovalor
 ```{r}
 variabilidad_cor = autovalores_cor/sum(autovalores_cor)
 round(variabilidad_cor,2)
 ```
 
-#Componentes principales
+## Componentes principales
 
 ```{r echo=TRUE}
 datos.pc = prcomp(df_accidentes[,c(2,3,4)],scale = TRUE)
